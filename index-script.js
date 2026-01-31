@@ -583,60 +583,17 @@ searchBtn.addEventListener("click", async function() {
   searchInput.value = "";
 });
 
-let currentScript = null;
 let currentFocus = -1;
-let isNavigating = false;
 
-window.handleGoogleSuggestions = function(data) {
-  const matches = data[1]; 
-  suggestionsBox.innerHTML = '';
-  
-  if (!matches || matches.length === 0) {
-    suggestionsBox.style.display = 'none';
-    return;
-  }
-  
-  matches.forEach((match, index) => {
-    const li = document.createElement('li');
-    li.textContent = match;
-    li.setAttribute('data-index', index);
-    
-    li.addEventListener('click', () => {
-      searchInput.value = match;      
-      suggestionsBox.style.display = 'none';
-      currentFocus = -1;
-      doSearch(match);
-    });
-    
-    suggestionsBox.appendChild(li);
+let localSuggestions = {};
+fetch("/suggestions.json")
+  .then(res => res.json())
+  .then(data => {
+    localSuggestions = data;
+  })
+  .catch(err => {
+    console.error("Failed to load suggestions.json", err);
   });
-  
-  suggestionsBox.style.display = 'block';
-  currentFocus = -1;
-};
-
-function fetchSuggestions(query) {
-  if (currentScript) {
-    currentScript.remove();
-    currentScript = null;
-  }
-  
-  const script = document.createElement('script');
-  currentScript = script;
-  script.src = `https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(query)}&callback=handleGoogleSuggestions`;
-  
-  script.onload = () => {
-    setTimeout(() => {
-      if (script.parentNode) script.remove();
-    }, 1000);
-  };
-  
-  script.onerror = () => {
-    if (script.parentNode) script.remove();
-  };
-  
-  document.body.appendChild(script);
-}
 
 searchInput.addEventListener('input', (e) => {
   if (isNavigating) {
@@ -658,14 +615,29 @@ searchInput.addEventListener('input', (e) => {
     console.error('67 detection error', e);
   }
   
-  if (!query) {
-    suggestionsBox.innerHTML = '';
-    suggestionsBox.style.display = 'none';
-    currentFocus = -1;
-    return;
-  }
-  
-  fetchSuggestions(query);
+  const matches = getLocalSuggestions(query);
+
+suggestionsBox.innerHTML = "";
+
+if (!matches.length) {
+  suggestionsBox.style.display = "none";
+  return;
+}
+
+matches.forEach((match, index) => {
+  const li = document.createElement("li");
+  li.textContent = match;
+
+  li.addEventListener("click", () => {
+    searchInput.value = match;
+    suggestionsBox.style.display = "none";
+    doSearch(match);
+  });
+
+  suggestionsBox.appendChild(li);
+});
+
+suggestionsBox.style.display = "block";
 });
 
 searchInput.addEventListener('keydown', function(e) {
