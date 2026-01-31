@@ -641,7 +641,7 @@ searchBtn.addEventListener("click", async function() {
 let currentFocus = -1;
 
 // Load suggestions JSON and build an index for fast matching
-fetch("/suggestions.json")
+fetch("suggestions.json")
   .then(res => {
     if (!res.ok) throw new Error('Network response was not ok');
     return res.json();
