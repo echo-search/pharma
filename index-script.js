@@ -18,6 +18,59 @@ const btn67 = document.getElementById("btn67");
 const audio67 = document.getElementById("audio67");
 const container = document.getElementById("emojiContainer");
 
+// ----- Fixes & helpers added -----
+// navigation flag used when arrow-key navigating suggestions
+let isNavigating = false;
+
+// flattened and lowercased local index for fast matching
+let localSuggestions = {};
+let localSuggestionsFlat = []; // original items
+let localSuggestionsIndex = []; // lowercased items for fast compare
+
+// simple debounce helper
+function debounce(fn, delay) {
+  let t = null;
+  return function (...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+/**
+ * Return local suggestions matching `query`.
+ * - Uses pre-flattened index for performance
+ * - Prefers prefix (startsWith) matches, then substring matches
+ * - Case-insensitive
+ * - Returns up to maxResults suggestions
+ */
+function getLocalSuggestions(query, maxResults = 10) {
+  try {
+    if (!query || !Array.isArray(localSuggestionsFlat)) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    const starts = [];
+    const contains = [];
+
+    for (let i = 0; i < localSuggestionsIndex.length && (starts.length + contains.length) < maxResults; i++) {
+      const itemLower = localSuggestionsIndex[i];
+      const original = localSuggestionsFlat[i];
+      if (!itemLower) continue;
+      if (itemLower.startsWith(q)) {
+        starts.push(original);
+      } else if (itemLower.includes(q)) {
+        contains.push(original);
+      }
+    }
+
+    return starts.concat(contains).slice(0, maxResults);
+  } catch (e) {
+    console.error('getLocalSuggestions error', e);
+    return [];
+  }
+}
+// ----- end fixes & helpers -----
+
 function saveLifetime(query) {
   const entry = { query, time: Date.now() };
   const life = JSON.parse(localStorage.getItem("lifetimeHistory") || "[]");
@@ -383,8 +436,10 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     try { recognition.start(); } catch (e) { }
   });
 } else {
-  voiceBtn.disabled = true;
-  voiceBtn.title = "Voice input not supported in this browser.";
+  if (voiceBtn) {
+    voiceBtn.disabled = true;
+    voiceBtn.title = "Voice input not supported in this browser.";
+  }
 }
 
 window.__gcse = {
@@ -585,24 +640,43 @@ searchBtn.addEventListener("click", async function() {
 
 let currentFocus = -1;
 
-let localSuggestions = {};
-fetch("suggestions.json")
-  .then(res => res.json())
+// Load suggestions JSON and build an index for fast matching
+fetch("/suggestions.json")
+  .then(res => {
+    if (!res.ok) throw new Error('Network response was not ok');
+    return res.json();
+  })
   .then(data => {
-    localSuggestions = data;
+    localSuggestions = data || {};
+    // flatten and build lowercased index
+    localSuggestionsFlat = Object.values(localSuggestions).reduce((acc, arr) => {
+      if (Array.isArray(arr)) acc.push(...arr);
+      return acc;
+    }, []);
+    localSuggestionsIndex = localSuggestionsFlat.map(s => (s || '').toLowerCase());
   })
   .catch(err => {
     console.error("Failed to load suggestions.json", err);
+    localSuggestions = {};
+    localSuggestionsFlat = [];
+    localSuggestionsIndex = [];
   });
 
-searchInput.addEventListener('input', (e) => {
+function clearSuggestions() {
+  suggestionsBox.innerHTML = "";
+  suggestionsBox.style.display = "none";
+  currentFocus = -1;
+}
+
+const handleInputEvent = (e) => {
   if (isNavigating) {
+    // key-navigation set this to avoid handling the input event that results from selecting
     isNavigating = false;
     return;
   }
 
   const query = searchInput.value.trim();
-  
+
   try {
     const compact = searchInput.value.replace(/\s+/g, '');
     if (compact === '67') {
@@ -614,31 +688,42 @@ searchInput.addEventListener('input', (e) => {
   } catch (e) {
     console.error('67 detection error', e);
   }
-  
+
+  // reset focus so arrow navigation works on new result set
+  currentFocus = -1;
+
+  if (!query) {
+    clearSuggestions();
+    return;
+  }
+
   const matches = getLocalSuggestions(query);
 
-suggestionsBox.innerHTML = "";
+  suggestionsBox.innerHTML = "";
 
-if (!matches.length) {
-  suggestionsBox.style.display = "none";
-  return;
-}
-
-matches.forEach((match, index) => {
-  const li = document.createElement("li");
-  li.textContent = match;
-
-  li.addEventListener("click", () => {
-    searchInput.value = match;
+  if (!matches.length) {
     suggestionsBox.style.display = "none";
-    doSearch(match);
+    return;
+  }
+
+  matches.forEach((match, index) => {
+    const li = document.createElement("li");
+    li.textContent = match;
+
+    li.addEventListener("click", () => {
+      searchInput.value = match;
+      suggestionsBox.style.display = "none";
+      doSearch(match);
+    });
+
+    suggestionsBox.appendChild(li);
   });
 
-  suggestionsBox.appendChild(li);
-});
+  suggestionsBox.style.display = "block";
+};
 
-suggestionsBox.style.display = "block";
-});
+// debounce input handler to avoid excessive work on each keystroke
+searchInput.addEventListener('input', debounce(handleInputEvent, 120));
 
 searchInput.addEventListener('keydown', function(e) {
   const items = suggestionsBox.getElementsByTagName('li');
