@@ -586,7 +586,7 @@ searchBtn.addEventListener("click", async function() {
 let currentFocus = -1;
 
 let localSuggestions = {};
-fetch("/suggestions.json")
+fetch("suggestions.json")
   .then(res => res.json())
   .then(data => {
     localSuggestions = data;
