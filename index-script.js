@@ -39,8 +39,7 @@ function debounce(fn, delay) {
 /**
  * Return local suggestions matching `query`.
  * - Uses pre-flattened index for performance
- * - Prefers prefix (startsWith) matches, then substring matches
- * - Case-insensitive
+ * - Only returns prefix matches (startsWith) — case-insensitive
  * - Returns up to maxResults suggestions
  */
 function getLocalSuggestions(query, maxResults = 10) {
@@ -49,21 +48,16 @@ function getLocalSuggestions(query, maxResults = 10) {
     const q = query.trim().toLowerCase();
     if (!q) return [];
 
-    const starts = [];
-    const contains = [];
-
-    for (let i = 0; i < localSuggestionsIndex.length && (starts.length + contains.length) < maxResults; i++) {
+    const results = [];
+    for (let i = 0; i < localSuggestionsIndex.length && results.length < maxResults; i++) {
       const itemLower = localSuggestionsIndex[i];
-      const original = localSuggestionsFlat[i];
       if (!itemLower) continue;
       if (itemLower.startsWith(q)) {
-        starts.push(original);
-      } else if (itemLower.includes(q)) {
-        contains.push(original);
+        results.push(localSuggestionsFlat[i]);
       }
     }
 
-    return starts.concat(contains).slice(0, maxResults);
+    return results;
   } catch (e) {
     console.error('getLocalSuggestions error', e);
     return [];
